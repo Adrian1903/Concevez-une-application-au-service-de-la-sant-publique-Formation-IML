@@ -1,0 +1,204 @@
+---
+title: "Test statistique sur les données Open Food Fact"
+author: "Adrian Rodriguez - Projet 2 - Concevez une application au service de la santé publique"
+date: "04/06/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(ggplot2)
+library(dplyr)
+```
+
+# 1. Importation / Exploration / Visualisation des données
+```{r}
+setwd("C:/Adrian - GDrive/Formation/Informatique - Digital/OpenClassroom/Parcours/Ingénieur ML/2 - Concevez une application au service de la santé publique - 70 heures/dev")
+```
+
+```{r}
+df = read.csv2("src/km_food.csv", sep=",", dec = ".", header=TRUE, encoding = "UTF-8")
+```
+
+```{r}
+head(df)
+str(df)
+summary(df)
+```
+
+R a intégré les clusters comme des variables numériques. Ce sont des variables quantitatives. Je dois les factoriser afin de ne pas fausser le test statistique.
+
+```{r}
+df$cluster_labels = as.factor(df$cluster_labels)
+str(df)
+```
+
+Je visualise les données
+
+```{r}
+# Pour afficher les clusters dans l'ordre croissant
+df_order = df %>% group_by(cluster_labels) %>% 
+                  summarise(median = median(energy.kcal_100g)) %>%
+                  arrange(median)
+df$cluster_labels = factor(df$cluster_labels, levels=df_order$cluster_labels)
+
+
+# Visualisation avec GGPLOT
+ggplot(df, aes(df$cluster_labels, df$energy.kcal_100g)) + geom_boxplot(fill="deepskyblue3") +
+      labs(title = "Dispersion des clusters calculés par l'algorithme Kmeans", 
+            subtitle = "Chacun des clusters sont bien dissociés",  
+            x="Clusters", 
+            y="Valeur énergétique (kcal/100g)") +
+      theme(plot.title = element_text(color="deepskyblue4", size=14, face="bold"),
+            plot.subtitle = element_text(face="italic"))
+```
+
+
+```{r}
+# Pour afficher les clusters dans l'ordre croissant
+df_order = df %>% group_by(category) %>% 
+                  summarise(median = median(energy.kcal_100g)) %>%
+                  arrange(median)
+df$category = factor(df$category, levels=df_order$category)
+
+# Visualisation avec GGPLOT
+ggplot(df, aes(df$category, df$energy.kcal_100g)) + geom_boxplot(fill="deepskyblue3") +
+      labs(title = "Dispersion des catégories Open Food Facts", 
+            subtitle = "Les différences ne semblent pas très significatives",  
+            x="Catégorie Open Food Fact", 
+            y="Valeur énergétique (kcal/100g)") +
+      theme(plot.title = element_text(color="deepskyblue4", size=14, face="bold"),
+            plot.subtitle = element_text(face="italic"),
+            axis.text.x = element_text(angle=90))
+```
+
+
+# 2. Test statistique sur les clusters calculé par Kmeans
+## Question biologique
+Existe-t-il une différence de valeur énergétique entre les produits des différents clusters ?
+
+## Formulation des hypothèses
+
+H0 = Il y a égalité entre tous les clusters.  
+H1 = Au moins 1 cluster est significativement différent.
+
+## Choix du test
+
+Nous avons une variable quantitative et une variable qualitative à 5 modalités. Nous réalisons une anova.
+```{r}
+# Exécution du test paramétrique
+lm = aov(df$energy.kcal_100g~df$cluster_labels)
+```
+
+
+## Vérification des résidus
+```{r}
+par(mfrow=c(2,2)) 
+plot(lm)
+```
+
+On constate un petit décrochage de la normalité des résidus. Mais avec 45200 observations ( > 30 observations), l'anova est capable de supporter un écart plus important. Je pourrez accepter le modèle tel quel, mais je vais m'assurer du modèle avec un test non paramètrique
+
+Pour les autres points d'observations, il n’y a pas de tendance entre les résidus et les fitted valueset et il y a homogéneïté des variances.  
+
+
+## Réalisation du test non paramétrique
+
+```{r}
+lm_kruskal = kruskal.test(df$energy.kcal_100g~df$cluster_labels)
+lm_kruskal
+```
+Dans le cadre de ce test non paramètrique, la p-value est inférieur à 5 %
+
+## Interprétation
+```{r}
+summary(lm)
+```
+
+Dans les deux cas, la p-value est < 5 %. Je rejette H0. Il y a donc au moins un cluster qui est différent des autres.
+
+
+## Test des moyennes 2 à 2
+Pour aller plus loin, je souhaite tester 2 à 2 chacun les valeurs moyennes des clusters avec les hypothèses suivantes :   
+H0: les 2 valeurs moyennes sont identiques,  
+H1: les 2 valeurs moyennes sont significativement différentes.  
+
+
+```{r}
+TukeyHSD(lm)
+```
+
+Toutes les Pvalue sont inférieures à 5 %. Il existe ici une différence entre toutes les modalités.
+
+
+# 3. Test statistique sur les catégories Open Food Fact
+## Question biologique
+Existe-t-il une différence de valeur énergétique entre les produits des différents groupe Open Food Facts ?
+
+## Formulation des hypothèses
+
+H0 = Il y a égalité entre tous les groupes.  
+H1 = Au moins 1 groupe est significativement différent.
+
+## Choix du test
+
+Nous avons une variable quantitative et une variable qualitative à 7 modalités. Nous réalisons une anova.
+```{r}
+# Exécution du test paramétrique
+lm = aov(df$energy.kcal_100g~df$category)
+```
+
+
+## Vérification des résidus
+```{r}
+par(mfrow=c(2,2)) 
+plot(lm)
+```
+
+Les résidus suivent plus difficilement une loi normale. Mais avec 45200 observations, l'anova est toujours capable de supporter un écart plus important. Je fais également le test non paramétrique dans ce cas
+
+Pour les autres points d'observations, il n’y a pas de tendance entre les résidus et les fitted values, et il y a homogéneïté des variances.  
+
+
+## Réalisation du test non paramétrique
+
+```{r}
+lm_kruskal = kruskal.test(df$energy.kcal_100g~df$cluster_labels)
+lm_kruskal
+```
+Encore une fois dans le cadre de ce test non paramétrique, la p-value est inférieur à 5 %
+
+## Interprétation
+```{r}
+summary(lm)
+```
+
+Dans les deux cas, la p-value est < 5 %. Je rejette H0. Il y a donc au moins une catégorie qui est différente des autres.
+
+
+## Test des moyennes 2 à 2
+Pour aller plus loin, je souhaite tester 2 à 2 chacun les valeurs moyennes des catégories avec les hypothèses suivantes :   
+H0: les 2 valeurs moyennes sont identiques,  
+H1: les 2 valeurs moyennes sont significativement différentes.  
+
+
+```{r}
+TukeyHSD(lm)
+```
+
+Toutes les Pvalue sont inférieures à 5 %. Il existe ici une différence entre toutes les modalités.   
+Attention toutefois à "Viandes - Poissons - Oeufs // Produits laitiers" dont la Pvalue s'approche de 0,05.
+
+
+
+
+
+
+
+
+
+# 4. Conclusion
+L'application faisable scientifiquement faisable dans les 2 cas, que ce soit avec le clustering kmeans ou la catégorisation manuelle open food fact.
